@@ -6,7 +6,7 @@ class RoboboSim:
         """
         Creates a new Robobo Sim library instance.
 
-        :param ip: The IP address of the Robobo Sim machine.
+        :param ip: The IP address of the machine running RoboboSim.
 
         :type ip: string
         """
@@ -40,14 +40,14 @@ class RoboboSim:
 
     def resetSimulation(self):
         """
-        Resets the current simulation running on RoboboSim
+        Resets the state of the current simulation running on RoboboSim
         """
 
         self.rem.resetSimulation()
     
     def getRobotLocation(self, robot_id):
         """
-        Returns the specified robot location.
+        Returns the location in world coordinates of the Robot specified by the index
 
         :param robot_id: The ID of the specified robot. Incremental, starting by 0.
 
@@ -58,7 +58,7 @@ class RoboboSim:
     
     def setRobotLocation(self, robot_id, position=None, rotation=None):
         """
-        Returns the specified robot location.
+        Sets the location in world coordinates of the Robot specified by the index
 
         :param robot_id: The ID of the specified robot. Incremental, starting by 0.
 
