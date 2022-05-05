@@ -20,8 +20,9 @@ class AGVProcessor(AbstractProcessor):
             robot_id = int(value["id"])
             if not robot_id in self.state.loaded.keys():
                 self.state.loaded[robot_id] = {}
+            loaded = (value["loaded"].lower() == "true")
             self.state.loaded[robot_id] = {
-                "loaded" : bool(value["loaded"])
+                "loaded" : loaded
             }
             self.runCallback("loaded")
 

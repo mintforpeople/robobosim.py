@@ -71,8 +71,8 @@ class Remote:
     def processMessage(self, msg):
         status = json.loads(msg)
         name = status["name"]
-        #print(name)
-        #print(status)
+        print(name)
+        print(status)
         value = status["value"]
         processed = False
         for key in self.processors.keys():
