@@ -117,6 +117,12 @@ class Remote:
             self.sendMessage(msg)
         except KeyError as e:
             pass
+    
+    def isRobotLoaded(self, robot_id):
+        try:
+            return self.state.loaded[robot_id]
+        except KeyError as e:
+            return None
 
     def setLocationCallback(self, callback):
         self.processors["LOCATION"].callbacks["location"] = callback

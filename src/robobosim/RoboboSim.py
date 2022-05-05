@@ -100,6 +100,17 @@ class RoboboSim:
 
         self.rem.unloadItem(robot_id)
     
+    def isRobotLoaded(self, robot_id):
+        """
+        Returns the load status of the Robot specified by the index
+
+        :param robot_id: The ID of the specified robot. Incremental, starting by 0.
+
+        :type robot_id: int
+        """
+
+        return self.rem.isRobotLoaded(robot_id)
+    
     def onNewLoaded(self, callback):
         """
         Configures the callback that is called when load status data is received.
