@@ -120,7 +120,7 @@ class Remote:
     
     def isRobotLoaded(self, robot_id):
         try:
-            return self.state.loaded[robot_id]
+            return self.state.loaded[robot_id]["loaded"]
         except KeyError as e:
             return None
 

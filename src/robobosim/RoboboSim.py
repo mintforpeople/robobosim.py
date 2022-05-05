@@ -102,7 +102,7 @@ class RoboboSim:
     
     def isRobotLoaded(self, robot_id):
         """
-        Returns the load status of the Robot specified by the index
+        Returns the boolean load status of the Robot specified by the index
 
         :param robot_id: The ID of the specified robot. Incremental, starting by 0.
 
