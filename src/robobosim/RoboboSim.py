@@ -85,3 +85,28 @@ class RoboboSim:
         """
 
         self.rem.setLocationCallback(callback)
+
+    def loadItem(self, robot_id):
+        """
+        If the AGV Robobo is placed on a proper load zone, it will load and carry the item provided by that zone on top of the robot
+        """
+
+        self.rem.loadItem(robot_id)
+    
+    def unloadItem(self, robot_id):
+        """
+        If the AGV Robobo is placed on a proper unload zone and is carrying a loaded item, it will drop the loaded item
+        """
+
+        self.rem.unloadItem(robot_id)
+    
+    def onNewLoaded(self, callback):
+        """
+        Configures the callback that is called when load status data is received.
+
+        :param callback: The callback function to be called.
+
+        :type callback: fun
+        """
+
+        self.rem.setLoadedCallback(callback)

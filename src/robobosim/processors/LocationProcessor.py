@@ -8,9 +8,7 @@ class LocationProcessor(AbstractProcessor):
         self.locationCallback = None
 
         self.callbacklocks = {"location": False }
-
         self.callbacks = {"location": None }
-
         self.supportedMessages = ["SIM-LOCATION"]
 
     def process(self, status):

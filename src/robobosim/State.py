@@ -3,6 +3,7 @@ class State:
         self.id = 0
 
         self.locations = {}
+        self.loaded = {}
 
     def getId(self):
         retId = self.id

@@ -9,6 +9,7 @@ from robobosim.utils.ConnectionState import ConnectionState
 
 from robobosim.processors.ControlProcessor import ControlProcessor
 from robobosim.processors.LocationProcessor import LocationProcessor
+from robobosim.processors.AGVProcessor import AGVProcessor
 
 class Remote:
     def __init__(self, ip):
@@ -17,7 +18,8 @@ class Remote:
         self.password = "REMOTE-SIM"
         self.state = State()
         self.processors = {"CONTROL": ControlProcessor(self.state),
-                           "LOCATION": LocationProcessor(self.state)}
+                           "LOCATION": LocationProcessor(self.state),
+                           "AGV": AGVProcessor(self.state)}
 
         self.wsDaemon = None
         self.connectionState = ConnectionState.DISCONNECTED
@@ -101,7 +103,25 @@ class Remote:
             self.sendMessage(msg)
         except KeyError as e:
             pass
+    
+    def loadItem(self, robot_id):
+        try:
+            msg = self.processors["AGV"].loadItem(robot_id)
+            self.sendMessage(msg)
+        except KeyError as e:
+            pass
+    
+    def unloadItem(self, robot_id):
+        try:
+            msg = self.processors["AGV"].unloadItem(robot_id)
+            self.sendMessage(msg)
+        except KeyError as e:
+            pass
 
     def setLocationCallback(self, callback):
         self.processors["LOCATION"].callbacks["location"] = callback
+    
+    def setLoadedCallback(self, callback):
+        self.processors["AGV"].callbacks["loaded"] = callback
+
 
