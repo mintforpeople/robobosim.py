@@ -9,6 +9,7 @@ from robobosim.utils.ConnectionState import ConnectionState
 
 from robobosim.processors.ControlProcessor import ControlProcessor
 from robobosim.processors.LocationProcessor import LocationProcessor
+from robobosim.processors.ObjectLocationProcessor import ObjectLocationProcessor
 from robobosim.processors.AGVProcessor import AGVProcessor
 
 class Remote:
@@ -19,7 +20,8 @@ class Remote:
         self.state = State()
         self.processors = {"CONTROL": ControlProcessor(self.state),
                            "LOCATION": LocationProcessor(self.state),
-                           "AGV": AGVProcessor(self.state)}
+                           "AGV": AGVProcessor(self.state),
+                           "OBJ-LOCATION": ObjectLocationProcessor(self.state)}
 
         self.wsDaemon = None
         self.connectionState = ConnectionState.DISCONNECTED
@@ -92,6 +94,12 @@ class Remote:
         msg = self.processors["CONTROL"].resetSimulation()
         self.sendMessage(msg)
     
+    def getRobots(self):
+        try:
+            return self.state.locations.keys()
+        except KeyError as e:
+            return None
+    
     def getRobotLocation(self, robot_id):
         try:
             return self.state.locations[robot_id]
@@ -101,6 +109,25 @@ class Remote:
     def setRobotLocation(self, robot_id, position, rotation):
         try:
             msg = self.processors["LOCATION"].setRobotLocation(robot_id, position, rotation)
+            self.sendMessage(msg)
+        except KeyError as e:
+            pass
+    
+    def getObjects(self):
+        try:
+            return self.state.object_locations.keys()
+        except KeyError as e:
+            return None
+    
+    def getObjectLocation(self, object_id):
+        try:
+            return self.state.object_locations[object_id]
+        except KeyError as e:
+            return None
+    
+    def setObjectLocation(self, object_id, position, rotation):
+        try:
+            msg = self.processors["OBJ-LOCATION"].setObjectLocation(object_id, position, rotation)
             self.sendMessage(msg)
         except KeyError as e:
             pass
@@ -127,6 +154,9 @@ class Remote:
 
     def setLocationCallback(self, callback):
         self.processors["LOCATION"].callbacks["location"] = callback
+    
+    def setObjectLocationCallback(self, callback):
+        self.processors["OBJ-LOCATION"].callbacks["object-location"] = callback
     
     def setLoadedCallback(self, callback):
         self.processors["AGV"].callbacks["loaded"] = callback

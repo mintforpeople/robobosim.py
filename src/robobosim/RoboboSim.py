@@ -45,6 +45,14 @@ class RoboboSim:
 
         self.rem.resetSimulation()
     
+    def getRobots(self):
+        """
+        Returns the list of available robots in the scene
+        """
+
+        return self.rem.getRobots()
+    
+    
     def getRobotLocation(self, robot_id):
         """
         Returns the location in world coordinates of the Robot specified by the index
@@ -85,6 +93,55 @@ class RoboboSim:
         """
 
         self.rem.setLocationCallback(callback)
+    
+    def getObjects(self):
+        """
+        Returns the list of available objects in the scene
+        """
+
+        return self.rem.getObjects()
+    
+    
+    def getObjectLocation(self, object_id):
+        """
+        Returns the location in world coordinates of the object specified by the ID
+
+        :param object_id: The ID of the specified object
+
+        :type object_id: string
+        """
+
+        return self.rem.getObjectLocation(object_id)
+    
+    def setObjectLocation(self, object_id, position=None, rotation=None):
+        """
+        Sets the location in world coordinates of the Object specified by the ID
+
+        :param object_id: The ID of the specified object.
+
+        :type object_id: string
+
+        :param position: Optional. Dict (x,y,z) of the target global position for the robot. If not specified robot will retain position.
+
+        :type position: dict
+
+        :param rotation: Optional. Dict (x,y,z) of the target global rotation of the robot. If not specified robot will retain rotation.
+
+        :type rotation: dict
+        """
+
+        self.rem.setObjectLocation(object_id, position, rotation)
+    
+    def onNewObjectLocation(self, callback):
+        """
+        Configures the callback that is called when object location data is received.
+
+        :param callback: The callback function to be called.
+
+        :type callback: fun
+        """
+
+        self.rem.setObjectLocationCallback(callback)
 
     def loadItem(self, robot_id):
         """

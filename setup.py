@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="robobosim",                     # This is the name of the package
-    version="1.4.0",                        # The initial release version
+    version="1.5.0",                        # The initial release version
     author="The Robobo Project",                     # Full name of the author
     author_email='info@theroboboproject.com',
     description="Robobo Sim remote control library",
