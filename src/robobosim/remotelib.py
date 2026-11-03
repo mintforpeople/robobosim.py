@@ -190,6 +190,7 @@ class Remote:
         self.processors["LOCATION"].callbacks["location"] = callback
 
     def setObjectLocationCallback(self, callback):
+        self.processors["OBJ-LOCATION"].callbacks["object_location"] = callback
         self.processors["OBJ-LOCATION"].callbacks["object-location"] = callback
 
     def setLoadedCallback(self, callback):

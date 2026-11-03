@@ -7,8 +7,8 @@ class ObjectLocationProcessor(AbstractProcessor):
 
         self.objectLocationCallback = None
 
-        self.callbacklocks = {"object_location": False }
-        self.callbacks = {"object_location": None }
+        self.callbacklocks = {"object_location": False, "object-location": False}
+        self.callbacks = {"object_location": None, "object-location": None}
         self.supportedMessages = ["SIM-OBJECT-LOCATION"]
 
     def process(self, status):
@@ -32,7 +32,10 @@ class ObjectLocationProcessor(AbstractProcessor):
                     "z" : float(value["rz"])
                 }
             }
-            self.runCallback("object_location")
+            if self.callbacks.get("object_location") is not None:
+                self.runCallback("object_location")
+            elif self.callbacks.get("object-location") is not None:
+                self.runCallback("object-location")
     
     def setObjectLocation(self, object_id, position, rotation):
         name = "SIM-OBJECT-LOCATION-SET"
@@ -55,4 +58,3 @@ class ObjectLocationProcessor(AbstractProcessor):
     
         id = self.state.getId()
         return Message(name, values, id)
-
