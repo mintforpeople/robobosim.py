@@ -1,16 +1,18 @@
 """
 RoboboSim Headless Cluster & Parallel Pool Manager
 Allows spinning up multiple parallel headless simulation instances from a single call,
-with configurable simulation speed, worlds, random seeds, and isolated ports.
+running as fast as possible by default with live feedback on running instances
+and average execution speed.
 
 Usage via CLI:
-    python -m robobosim.RoboboPool start -e "Build/Robobo Sim.exe" -n 10 --speed 10 --world CuatroParedes
-    python -m robobosim.RoboboPool test -e "Build/Robobo Sim.exe" -n 10 --speed 10 --world CuatroParedes
+    python -m robobosim.RoboboPool start -e "Build/Robobo Sim.exe" -n 10 --world CuatroParedes
+    python -m robobosim.RoboboPool test -e "Build/Robobo Sim.exe" -n 10 --world CuatroParedes
 
 Usage via Python API:
     from robobosim.RoboboPool import RoboboPool
 
-    with RoboboPool("Build/Robobo Sim.exe", num_instances=10, speed=10, world="CuatroParedes") as pool:
+    # By default, runs uncapped / as fast as possible
+    with RoboboPool("Build/Robobo Sim.exe", num_instances=10, world="CuatroParedes") as pool:
         for idx in range(pool.num_instances):
             rob = pool.get_robot(idx)
             sim = pool.get_sim(idx)
@@ -18,7 +20,9 @@ Usage via Python API:
 """
 
 import os
+import sys
 import time
+import json
 import socket
 import argparse
 import subprocess
@@ -107,23 +111,25 @@ class SimpleWSClient:
 
 
 class InstanceInfo:
-    def __init__(self, instance_id: int, robot_port: int, sim_port: int, seed: int, log_path: str, proc: subprocess.Popen):
+    def __init__(self, instance_id: int, robot_port: int, sim_port: int, seed: int, log_path: str, status_path: str, proc: subprocess.Popen):
         self.instance_id = instance_id
         self.robot_port = robot_port
         self.sim_port = sim_port
         self.seed = seed
         self.log_path = log_path
+        self.status_path = status_path
         self.proc = proc
         self.robot_client: Optional[Robobo] = None
         self.sim_client: Optional[RoboboSim] = None
+        self.last_status: Dict[str, Any] = {}
 
 
 class RoboboPool:
     def __init__(
         self,
-        executable_path: str,
+        executable_path: Optional[str] = None,
         num_instances: int = 5,
-        speed: float = 1.0,
+        speed: Optional[float] = None,
         world: str = "CuatroParedes",
         custom_world: Optional[str] = None,
         base_instance_id: int = 1,
@@ -143,7 +149,20 @@ class RoboboPool:
         verbose: bool = True
     ):
         if not executable_path:
-            raise ValueError("executable_path must be provided to RoboboPool.")
+            candidates = [
+                os.path.join("Build", "Robobo Sim.exe"),
+                os.path.join("Build", "RoboboCE.exe"),
+                "Robobo Sim.exe",
+                "RoboboCE.exe",
+                os.path.join("Build", "Robobo Sim.x86_64"),
+                os.path.join("Build", "Robobo Sim.app", "Contents", "MacOS", "Robobo Sim")
+            ]
+            for cand in candidates:
+                if os.path.exists(cand):
+                    executable_path = cand
+                    break
+        if not executable_path:
+            raise ValueError("executable_path must be provided or located in Build/ directory.")
         self.executable_path = os.path.abspath(executable_path)
         self.num_instances = num_instances
         self.speed = speed
@@ -172,10 +191,11 @@ class RoboboPool:
 
         os.makedirs(self.logs_dir, exist_ok=True)
 
+        speed_display = f"{self.speed}x" if (self.speed is not None and self.speed > 0) else "As fast as possible (uncapped)"
         if self.verbose:
             print("=" * 80)
             print(f"LAUNCHING ROBOBO SIMULATOR POOL ({self.num_instances} INSTANCES)")
-            print(f"Speed: {self.speed}x | World: {self.world or self.custom_world} | Physics: {'Simplified' if self.simpler_physics else 'Realistic'}")
+            print(f"Speed: {speed_display} | World: {self.world or self.custom_world} | Physics: {'Simplified' if self.simpler_physics else 'Realistic'}")
             print(f"Executable: {self.executable_path}")
             print("=" * 80)
 
@@ -185,18 +205,24 @@ class RoboboPool:
             sim_port = self.sim_base_port + i * self.port_step
             seed = (self.seed_base + i) if self.seed_per_instance else self.seed_base
             log_path = os.path.join(self.logs_dir, f"sim_instance_{inst_id}.log")
+            status_path = os.path.join(self.logs_dir, f"sim_instance_{inst_id}.status")
 
             cmd = [
                 self.executable_path,
                 "-batchmode",
                 "-nographics",
-                "--speed", str(self.speed),
                 "--seed", str(seed),
                 "--instance", str(inst_id),
                 "--port", str(robot_port),
                 "--simPort", str(sim_port),
+                "--statusFile", status_path,
                 "-logFile", log_path
             ]
+
+            if self.speed is not None and self.speed > 0:
+                cmd.extend(["--speed", str(self.speed)])
+            else:
+                cmd.append("--asFastAsPossible")
 
             if self.custom_world:
                 cmd.extend(["--customWorld", self.custom_world])
@@ -236,7 +262,7 @@ class RoboboPool:
                 print(f"  [Instance {inst_id:>2}] Spawning PID -> RobotPort: {robot_port}, SimPort: {sim_port}, Seed: {seed}")
 
             proc = subprocess.Popen(cmd)
-            self.instances.append(InstanceInfo(inst_id, robot_port, sim_port, seed, log_path, proc))
+            self.instances.append(InstanceInfo(inst_id, robot_port, sim_port, seed, log_path, status_path, proc))
 
         if self.verbose:
             print("\nWaiting for all instances to bind and listen on sockets...")
@@ -336,6 +362,128 @@ class RoboboPool:
         if self.verbose:
             print("All instances stopped and resources cleaned up.")
 
+    def get_instance_status(self, index: int) -> Dict[str, Any]:
+        inst = self.instances[index]
+        is_alive = inst.proc.poll() is None
+        status_data = {
+            "instance_id": inst.instance_id,
+            "pid": inst.proc.pid,
+            "is_alive": is_alive,
+            "robot_port": inst.robot_port,
+            "sim_port": inst.sim_port,
+            "status": "RUNNING" if is_alive else "STOPPED",
+            "speed": 0.0,
+            "sim_time": 0.0,
+            "ticks": 0,
+            "is_paused": True,
+            "as_fast_as_possible": (self.speed is None or self.speed <= 0)
+        }
+        if os.path.exists(inst.status_path):
+            try:
+                with open(inst.status_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    status_data["speed"] = float(data.get("effectiveSpeed", 0.0))
+                    status_data["sim_time"] = float(data.get("simTime", 0.0))
+                    status_data["ticks"] = int(data.get("tick", 0))
+                    status_data["is_paused"] = bool(data.get("isPaused", False))
+                    status_data["status"] = str(data.get("status", status_data["status"]))
+                    inst.last_status = dict(status_data)
+            except Exception:
+                if inst.last_status:
+                    status_data.update({
+                        "speed": inst.last_status.get("speed", 0.0),
+                        "sim_time": inst.last_status.get("sim_time", 0.0),
+                        "ticks": inst.last_status.get("ticks", 0),
+                        "status": inst.last_status.get("status", status_data["status"])
+                    })
+        return status_data
+
+    def get_cluster_stats(self) -> Dict[str, Any]:
+        statuses = [self.get_instance_status(i) for i in range(len(self.instances))]
+        total = len(self.instances)
+        alive = sum(1 for s in statuses if s["is_alive"])
+        active_speeds = [s["speed"] for s in statuses if s["is_alive"] and s["speed"] > 0]
+        avg_speed = (sum(active_speeds) / len(active_speeds)) if active_speeds else 0.0
+        agg_speed = sum(s["speed"] for s in statuses if s["is_alive"])
+        total_sim_time = sum(s["sim_time"] for s in statuses if s["is_alive"])
+        total_ticks = sum(s["ticks"] for s in statuses if s["is_alive"])
+        return {
+            "total_instances": total,
+            "running_instances": alive,
+            "active_simulating": len(active_speeds),
+            "average_speed": avg_speed,
+            "aggregate_speed": agg_speed,
+            "total_sim_time": total_sim_time,
+            "total_ticks": total_ticks,
+            "instances": statuses
+        }
+
+    def monitor_cluster(self, interval: float = 0.5):
+        """
+        Runs a live monitoring loop on the console displaying running instances
+        and estimated live average execution speed.
+        """
+        print("Starting live cluster monitor. Press Ctrl+C to stop cluster.\n")
+        speed_label = "As fast as possible (uncapped)" if (self.speed is None or self.speed <= 0) else f"{self.speed}x"
+        supports_ansi = sys.stdout.isatty() or os.environ.get("TERM") is not None
+
+        try:
+            while True:
+                stats = self.get_cluster_stats()
+                running = stats["running_instances"]
+                total = stats["total_instances"]
+                avg_speed = stats["average_speed"]
+                agg_speed = stats["aggregate_speed"]
+
+                if total > 0 and running == 0:
+                    print("\n[Robobo Cluster] All instances have terminated.")
+                    break
+
+                lines = []
+                lines.append("=" * 82)
+                lines.append(f"  ROBOBO HEADLESS CLUSTER MONITOR  |  Target Speed: {speed_label}")
+                lines.append("=" * 82)
+
+                status_str = f"Instances Running: {running}/{total}"
+                if running < total:
+                    status_str += f" ({total - running} Dead/Stopped)"
+
+                if stats["active_simulating"] > 0:
+                    speed_str = f"Avg Speed: {avg_speed:>5.1f}x  |  Cluster Throughput: {agg_speed:>6.1f}x"
+                else:
+                    speed_str = "Avg Speed: 0.0x (Idle - waiting for client commands)"
+
+                lines.append(f"  {status_str:<32} {speed_str}")
+                lines.append("-" * 82)
+                lines.append(f"  {'Inst':<6}{'PID':<8}{'Ports (Rob/Sim)':<18}{'Status':<14}{'Speed':<10}{'Sim Time':<12}{'Ticks':<8}")
+                lines.append("-" * 82)
+
+                for s in stats["instances"]:
+                    inst_id = s["instance_id"]
+                    pid = s["pid"]
+                    ports = f"{s['robot_port']}/{s['sim_port']}"
+                    state = s["status"] if s["is_alive"] else "DEAD"
+                    speed_val = f"{s['speed']:>5.1f}x" if (s["is_alive"] and s["speed"] > 0) else ("Idle" if s["is_alive"] else "---")
+                    sim_t = f"{s['sim_time']:>6.1f}s" if s["is_alive"] else "---"
+                    ticks = f"{s['ticks']:>7}" if s["is_alive"] else "---"
+                    lines.append(f"  {inst_id:<6}{pid:<8}{ports:<18}{state:<14}{speed_val:<10}{sim_t:<12}{ticks:<8}")
+
+                lines.append("=" * 82)
+                lines.append("  Live feedback: Press Ctrl+C to terminate all cluster instances.")
+
+                output = "\n".join(lines)
+
+                if supports_ansi:
+                    sys.stdout.write("\033[H\033[2J" + output + "\n")
+                    sys.stdout.flush()
+                else:
+                    speed_disp = f"{avg_speed:.1f}x" if stats["active_simulating"] > 0 else "Idle"
+                    print(f"\r[Robobo Cluster] Running: {running}/{total} | Avg Speed: {speed_disp} | Total Ticks: {stats['total_ticks']}", end="", flush=True)
+
+                time.sleep(interval)
+        except KeyboardInterrupt:
+            print("\nShutting down cluster pool...")
+
     def __enter__(self):
         self.start()
         return self
@@ -344,8 +492,9 @@ class RoboboPool:
         self.stop()
 
 
-def run_test(executable_path: str, num_instances: int = 10, speed: float = 10.0, world: str = "CuatroParedes"):
-    print(f"Running automated test on {num_instances} instances at {speed}x speed...")
+def run_test(executable_path: str, num_instances: int = 10, speed: Optional[float] = None, world: str = "CuatroParedes"):
+    speed_disp = f"{speed}x" if (speed is not None and speed > 0) else "as fast as possible"
+    print(f"Running automated test on {num_instances} instances at {speed_disp}...")
     with RoboboPool(executable_path=executable_path, num_instances=num_instances, speed=speed, world=world, lockstep=False) as pool:
         print("\nConnecting all clients and testing simultaneous actions...")
         robots = [pool.get_robot(i) for i in range(pool.num_instances)]
@@ -384,10 +533,10 @@ def main():
     parser = argparse.ArgumentParser(description="RoboboSim Headless Cluster & Pool Manager")
     subparsers = parser.add_subparsers(dest="action", required=True)
 
-    p_start = subparsers.add_parser("start", help="Spin up N simulator instances and keep running")
+    p_start = subparsers.add_parser("start", help="Spin up N simulator instances with live console feedback")
     p_start.add_argument("-e", "--exe", "--executable", dest="executable_path", type=str, required=True, help="Path to the RoboboSim executable")
     p_start.add_argument("-n", "--num-instances", type=int, default=5, help="Number of instances to spin up (default: 5)")
-    p_start.add_argument("-s", "--speed", type=float, default=1.0, help="Simulation speed multiplier (e.g. 1, 5, 10, 20)")
+    p_start.add_argument("-s", "--speed", type=float, default=None, help="Optional speed multiplier cap. Default: None (runs as fast as possible)")
     p_start.add_argument("-w", "--world", type=str, default="CuatroParedes", help="Target scene name")
     p_start.add_argument("--customWorld", type=str, default=None, help="Path to custom world JSON")
     p_start.add_argument("--seed", type=int, default=42, help="Base random seed")
@@ -398,7 +547,7 @@ def main():
     p_test = subparsers.add_parser("test", help="Spin up N instances, run simultaneous actions, and verify")
     p_test.add_argument("-e", "--exe", "--executable", dest="executable_path", type=str, required=True, help="Path to the RoboboSim executable")
     p_test.add_argument("-n", "--num-instances", type=int, default=5, help="Number of instances (default: 5)")
-    p_test.add_argument("-s", "--speed", type=float, default=10.0, help="Simulation speed multiplier (default: 10.0)")
+    p_test.add_argument("-s", "--speed", type=float, default=None, help="Optional speed multiplier cap. Default: None (runs as fast as possible)")
     p_test.add_argument("-w", "--world", type=str, default="CuatroParedes", help="Target scene name")
 
     args = parser.parse_args()
@@ -417,12 +566,8 @@ def main():
             lockstep=not args.free_run
         )
         pool.start()
-        print("Press Ctrl+C to stop all instances.")
         try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            print("\nShutting down pool...")
+            pool.monitor_cluster()
         finally:
             pool.stop()
 
