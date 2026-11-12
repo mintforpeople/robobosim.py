@@ -145,6 +145,7 @@ class RoboboPool:
         quit_after: float = -1.0,
         scene_config: Optional[str] = None,
         lockstep: bool = True,
+        camera_stream: bool = False,
         logs_dir: str = "logs",
         verbose: bool = True
     ):
@@ -181,6 +182,7 @@ class RoboboPool:
         self.quit_after = quit_after
         self.scene_config = scene_config
         self.lockstep = lockstep
+        self.camera_stream = camera_stream
         self.logs_dir = os.path.abspath(logs_dir)
         self.verbose = verbose
         self.instances: List[InstanceInfo] = []
@@ -210,7 +212,6 @@ class RoboboPool:
             cmd = [
                 self.executable_path,
                 "-batchmode",
-                "-nographics",
                 "--seed", str(seed),
                 "--instance", str(inst_id),
                 "--port", str(robot_port),
@@ -218,6 +219,11 @@ class RoboboPool:
                 "--statusFile", status_path,
                 "-logFile", log_path
             ]
+
+            if not self.camera_stream:
+                cmd.insert(2, "-nographics")
+            else:
+                cmd.append("--cameraStream")
 
             if self.speed is not None and self.speed > 0:
                 cmd.extend(["--speed", str(self.speed)])
@@ -492,10 +498,10 @@ class RoboboPool:
         self.stop()
 
 
-def run_test(executable_path: str, num_instances: int = 10, speed: Optional[float] = None, world: str = "CuatroParedes"):
+def run_test(executable_path: str, num_instances: int = 10, speed: Optional[float] = None, world: str = "CuatroParedes", camera_stream: bool = False):
     speed_disp = f"{speed}x" if (speed is not None and speed > 0) else "as fast as possible"
-    print(f"Running automated test on {num_instances} instances at {speed_disp}...")
-    with RoboboPool(executable_path=executable_path, num_instances=num_instances, speed=speed, world=world, lockstep=False) as pool:
+    print(f"Running automated test on {num_instances} instances at {speed_disp} (cameraStream={camera_stream})...")
+    with RoboboPool(executable_path=executable_path, num_instances=num_instances, speed=speed, world=world, lockstep=False, camera_stream=camera_stream) as pool:
         print("\nConnecting all clients and testing simultaneous actions...")
         robots = [pool.get_robot(i) for i in range(pool.num_instances)]
         sims = [pool.get_sim(i) for i in range(pool.num_instances)]
@@ -543,17 +549,19 @@ def main():
     p_start.add_argument("--realisticPhysics", action="store_true", help="Use realistic NWH physics instead of simplified")
     p_start.add_argument("--lockstep", action="store_true", default=True, help="Enable lockstep tick-stepping mode (default in headless mode)")
     p_start.add_argument("--freeRun", "--noLockstep", dest="free_run", action="store_true", help="Disable lockstep and run real-time/accelerated free-running simulation")
+    p_start.add_argument("--cameraStream", action="store_true", help="Enable offscreen robot camera rendering and streaming (omits -nographics)")
 
     p_test = subparsers.add_parser("test", help="Spin up N instances, run simultaneous actions, and verify")
     p_test.add_argument("-e", "--exe", "--executable", dest="executable_path", type=str, required=True, help="Path to the RoboboSim executable")
     p_test.add_argument("-n", "--num-instances", type=int, default=5, help="Number of instances (default: 5)")
     p_test.add_argument("-s", "--speed", type=float, default=None, help="Optional speed multiplier cap. Default: None (runs as fast as possible)")
     p_test.add_argument("-w", "--world", type=str, default="CuatroParedes", help="Target scene name")
+    p_test.add_argument("--cameraStream", action="store_true", help="Enable offscreen robot camera rendering and streaming (omits -nographics)")
 
     args = parser.parse_args()
 
     if args.action == "test":
-        run_test(executable_path=args.executable_path, num_instances=args.num_instances, speed=args.speed, world=args.world)
+        run_test(executable_path=args.executable_path, num_instances=args.num_instances, speed=args.speed, world=args.world, camera_stream=args.cameraStream)
     elif args.action == "start":
         pool = RoboboPool(
             executable_path=args.executable_path,
@@ -563,7 +571,8 @@ def main():
             custom_world=args.customWorld,
             seed_base=args.seed,
             simpler_physics=not args.realisticPhysics,
-            lockstep=not args.free_run
+            lockstep=not args.free_run,
+            camera_stream=args.cameraStream
         )
         pool.start()
         try:
